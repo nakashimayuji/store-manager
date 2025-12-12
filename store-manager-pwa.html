@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>店長サポートAI</title>
+
+<!-- PWA設定 -->
+<link rel="manifest" href="manifest.json" />
+<style>
+    body {
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        background: #fff7fb;
+        margin: 0;
+        padding: 20px;
+        text-align: center;
+    }
+
+    h1 {
+        font-size: 26px;
+        color: #ff7ab5;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+
+    .sub {
+        font-size: 14px;
+        color: #444;
+        margin-bottom: 25px;
+    }
+
+    /* 大きな丸いボタン */
+    .big-btn {
+        background: linear-gradient(135deg, #ffb7d5, #ff7ab5);
+        color: white;
+        font-size: 20px;
+        font-weight: bold;
+        border: none;
+        width: 85%;
+        padding: 18px;
+        margin: 15px auto;
+        border-radius: 50px;
+        display: block;
+        box-shadow: 0 5px 12px rgba(255, 120, 180, 0.3);
+        transition: 0.15s ease;
+    }
+
+    .big-btn:active {
+        transform: scale(0.95);
+    }
+
+    /* 入力ボックス */
+    input, select {
+        width: 85%;
+        font-size: 18px;
+        padding: 12px;
+        border: 2px solid #ffb7d5;
+        border-radius: 15px;
+        margin-bottom: 20px;
+        background: #fff;
+    }
+
+    #result-box {
+        margin-top: 25px;
+        padding: 20px;
+        background: #ffffff;
+        border-radius: 20px;
+        font-size: 18px;
+        color: #444;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        display: none;
+    }
+</style>
+</head>
+
+<body>
+<h1>店長サポートAI</h1>
+<div class="sub">今日もお疲れさまです 🍀</div>
+
+<!-- メインメニュー -->
+<button class="big-btn" onclick="showStaffForm()">👤 バイトの得意分野 登録</button>
+<button class="big-btn" onclick="showWorkloadForm()">🍢 仕込み量のアドバイス</button>
+<button class="big-btn" onclick="showCongestionForm()">👀 混雑状況をみて指示</button>
+<button class="big-btn" onclick="showStaffList()">📋 スタッフ一覧 / 今日のメンバー選択</button>
+
+<div id="input-area"></div>
+<div id="result-box"></div>
+
+<script>
+
+/* --- UI画面切り替え関数 --- */
+
+function showStaffForm() {
+    document.getElementById("input-area").innerHTML = `
+        <h2>👤 バイト情報を登録</h2>
+        <input id="name" placeholder="名前を入力" />
+        <div style="text-align:left; width:85%; margin:10px auto;">
+            <label>ホール: </label>
+            <select id="skill-hall">
+                <option value="3">3（得意）</option>
+                <option value="2">2（普通）</option>
+                <option value="1">1（苦手）</option>
+            </select>
+            <br/><br/>
+            <label>焼き鳥: </label>
+            <select id="skill-yakitori">
+                <option value="3">3（得意）</option>
+                <option value="2">2（普通）</option>
+                <option value="1">1（苦手）</option>
+            </select>
+            <br/><br/>
+            <label>一品調理: </label>
+            <select id="skill-ippin">
+                <option value="3">3（得意）</option>
+                <option value="2">2（普通）</option>
+                <option value="1">1（苦手）</option>
+            </select>
+            <br/><br/>
+            <label>皿洗い: </label>
+            <select id="skill-dish">
+                <option value="3">3（得意）</option>
+                <option value="2">2（普通）</option>
+                <option value="1">1（苦手）</option>
+            </select>
+        </div>
+        <button class="big-btn" onclick="saveStaff()">登録する</button>
+    `;
+}
+
+function showWorkloadForm() {
+    document.getElementById("input-area").innerHTML = `
+        <h2>🍢 今日の仕込み量を診断</h2>
+        <input id="customers" type="number" placeholder="今日の予想客数を入力" />
+        <button class="big-btn" onclick="calcWorkload()">AIに診断してもらう</button>
+    `;
+}
+
+function showCongestionForm() {
+    document.getElementById("input-area").innerHTML = `
+        <h2>👀 混雑状況チェック</h2>
+        <input id="now" placeholder="現在の客数を入力" type="number" />
+        <button class="big-btn" onclick="checkCongestion()">AIに指示を聞く</button>
+    `;
+}
+
+// スタッフ一覧と今日のメンバー選択
+function showStaffList() {
+    let staff = JSON.parse(localStorage.getItem('staff') || '[]');
+    let today = JSON.parse(localStorage.getItem('todayMembers') || '[]');
+
+    let html = `<h2>📋 登録スタッフ</h2>`;
+    if (staff.length === 0) {
+        html += `<div>登録されたスタッフがいません。</div>`;
+    } else {
+        html += `<div style="display:flex;flex-direction:column;gap:12px; align-items:center;">
+            `;
+        staff.forEach(s => {
+            let checked = today.includes(s.name) ? 'checked' : '';
+            html += `
+            <div style="width:85%; background:#fff; border-radius:12px; padding:12px; box-shadow:0 4px 10px rgba(0,0,0,0.04); text-align:left;">
+                <label style="display:flex; align-items:center; gap:10px;">
+                    <input type="checkbox" onchange="toggleTodayMember(this,'${s.name.replace(/'/g,"\\'") }')" ${checked} />
+                    <strong>${s.name}</strong>
+                </label>
+                <div style="margin-top:8px; font-size:14px; color:#444;">
+                    ホール: ${s.skills.hall} ／ 焼き鳥: ${s.skills.yakitori} ／ 一品: ${s.skills.ippin} ／ 皿洗い: ${s.skills.dish}
+                </div>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+
+    html += `<br/><button class="big-btn" onclick="saveTodayMembers()">今日のメンバーを保存</button>`;
+    html += `<button class="big-btn" onclick="computeOptimalAssignment()">🤖 AIで最適配置を決める</button>`;
+
+    document.getElementById('input-area').innerHTML = html;
+}
+
+function toggleTodayMember(checkbox, name) {
+    let today = JSON.parse(localStorage.getItem('todayMembers') || '[]');
+    if (checkbox.checked) {
+        if (!today.includes(name)) today.push(name);
+    } else {
+        today = today.filter(n => n !== name);
+    }
+    localStorage.setItem('todayMembers', JSON.stringify(today));
+}
+
+function saveTodayMembers() {
+    // todayMembers already updated on toggle; just show confirmation
+    let today = JSON.parse(localStorage.getItem('todayMembers') || '[]');
+    if (today.length === 0) {
+        showResult('今日のメンバーが選択されていません。');
+    } else {
+        showResult('今日のメンバーを保存しました：<br>' + today.join('、'));
+    }
+}
+
+// 簡易AI: 今日選ばれたメンバーをもとに、その人ごとの最適役割を決める
+function computeOptimalAssignment() {
+    let staff = JSON.parse(localStorage.getItem('staff') || '[]');
+    let today = JSON.parse(localStorage.getItem('todayMembers') || '[]');
+    if (today.length === 0) {
+        showResult('今日のメンバーが選ばれていません。まず「スタッフ一覧」で選択してください。');
+        return;
+    }
+
+    let members = staff.filter(s => today.includes(s.name));
+    if (members.length === 0) {
+        showResult('選択されたメンバーが登録情報に見つかりません。');
+        return;
+    }
+
+    // 各メンバーの最適役割を決定（最大評価の役割を割り当てる）
+    let assignments = members.map(m => {
+        let skills = m.skills;
+        let role = 'ホール';
+        let max = skills.hall;
+        if (skills.yakitori > max) { max = skills.yakitori; role = '焼き鳥'; }
+        if (skills.ippin > max) { max = skills.ippin; role = '一品'; }
+        if (skills.dish > max) { max = skills.dish; role = '皿洗い'; }
+        return {name: m.name, role: role, score: max};
+    });
+
+    // 結果を見やすく表示
+    let html = `<h3>最適配置（簡易AI）</h3>`;
+    assignments.forEach(a => {
+        html += `<div style="padding:8px 0;">${a.name} → <b>${a.role}</b>（評価 ${a.score}）</div>`;
+    });
+
+    // 役割ごとの人数集計
+    let counts = assignments.reduce((acc, a) => { acc[a.role] = (acc[a.role]||0)+1; return acc; }, {});
+    html += `<div style="margin-top:10px; font-size:14px; color:#444;">役割集計：`;
+    for (let k in counts) html += ` ${k} ${counts[k]}名 `;
+    html += `</div>`;
+
+    showResult(html);
+}
+
+/* --- バイト情報の保存 --- */
+function saveStaff() {
+    let name = document.getElementById("name").value;
+    if (!name) {
+        alert("名前を入力してください！");
+        return;
+    }
+
+    // 各技能を3段階評価で取得
+    let hall = Number(document.getElementById("skill-hall").value);
+    let yakitori = Number(document.getElementById("skill-yakitori").value);
+    let ippin = Number(document.getElementById("skill-ippin").value);
+    let dish = Number(document.getElementById("skill-dish").value);
+
+    let skills = {
+        hall: hall,
+        yakitori: yakitori,
+        ippin: ippin,
+        dish: dish
+    };
+
+    let data = JSON.parse(localStorage.getItem("staff") || "[]");
+    data.push({name: name, skills: skills});
+    localStorage.setItem("staff", JSON.stringify(data));
+
+    showResult(`${name} さんを登録しました！<br><br>
+        ホール: <b>${hall}</b> ／ 焼き鳥: <b>${yakitori}</b> ／ 一品: <b>${ippin}</b> ／ 皿洗い: <b>${dish}</b>
+    `);
+}
+
+/* --- 仕込み量の計算（簡易AI） --- */
+function calcWorkload() {
+    let n = Number(document.getElementById("customers").value);
+    if (!n) {
+        alert("人数を入力してください！");
+        return;
+    }
+
+    // 今日は誰が入るかで焼き鳥・一品の準備量を調整
+    let staff = JSON.parse(localStorage.getItem('staff') || '[]');
+    let todayNames = JSON.parse(localStorage.getItem('todayMembers') || '[]');
+    let members = staff.filter(s => todayNames.includes(s.name));
+
+    // 平均スキルを計算（存在しなければ中央値2を使う）
+    let avgYakitori = 2;
+    let avgIppin = 2;
+    if (members.length > 0) {
+        avgYakitori = members.reduce((a,b)=>a+b.skills.yakitori,0)/members.length;
+        avgIppin = members.reduce((a,b)=>a+b.skills.ippin,0)/members.length;
+    }
+
+    // スキルによる調整係数（avg=2で1倍、avg=3で0.8倍、avg=1で1.2倍のような簡易調整）
+    let yakitoriMultiplier = 1 + (2 - avgYakitori) * 0.2;
+    let ippinMultiplier = 1 + (2 - avgIppin) * 0.15;
+
+    let yakitori = Math.max(0, Math.round(n * 2.5 * yakitoriMultiplier));
+    let ippin = Math.max(0, Math.round(n * 1.2 * ippinMultiplier));
+
+    showResult(`
+        🍢 今日の仕込みアドバイス（予想客数 ${n}人）<br><br>
+        ・焼き鳥：<b>${yakitori}本</b>（スキル補正: ${yakitoriMultiplier.toFixed(2)}）<br>
+        ・一品料理：<b>${ippin}皿</b>（スキル補正: ${ippinMultiplier.toFixed(2)}）
+    `);
+}
+
+// 混雑状況から仕込みアドバイスを出す（現在の客数をそのまま予想値として扱う簡易版）
+function calcWorkloadFromCongestion(n) {
+    // n: 現在客数（簡易的にそのまま予想客数として扱う）
+    // 再利用のために計算を分離
+    let staff = JSON.parse(localStorage.getItem('staff') || '[]');
+    let todayNames = JSON.parse(localStorage.getItem('todayMembers') || '[]');
+    let members = staff.filter(s => todayNames.includes(s.name));
+
+    let avgYakitori = 2;
+    let avgIppin = 2;
+    if (members.length > 0) {
+        avgYakitori = members.reduce((a,b)=>a+b.skills.yakitori,0)/members.length;
+        avgIppin = members.reduce((a,b)=>a+b.skills.ippin,0)/members.length;
+    }
+
+    let yakitoriMultiplier = 1 + (2 - avgYakitori) * 0.2;
+    let ippinMultiplier = 1 + (2 - avgIppin) * 0.15;
+
+    let yakitori = Math.max(0, Math.round(n * 2.5 * yakitoriMultiplier));
+    let ippin = Math.max(0, Math.round(n * 1.2 * ippinMultiplier));
+
+    return {yakitori, ippin, yakitoriMultiplier: yakitoriMultiplier.toFixed(2), ippinMultiplier: ippinMultiplier.toFixed(2)};
+}
+
+/* --- 混雑状況の判断 --- */
+function checkCongestion() {
+    let n = Number(document.getElementById("now").value);
+
+    if (!n) {
+        alert("人数を入力してください！");
+        return;
+    }
+
+    let message = "";
+    if (n < 15) {
+        message = "今は落ち着いています。ゆっくり対応でOK！🍀";
+    } else if (n < 30) {
+        message = "少し忙しくなってきました。ホール優先で！💨";
+    } else {
+        message = "満席に近いです！焼き鳥と一品を最優先で回しましょう！🔥";
+    }
+
+    // 混雑に応じた仕込み量アドバイスも出す
+    let advice = calcWorkloadFromCongestion(n);
+    message += `<br/><br/>🍢 推奨仕込み（現在の客数 ${n}人 を基準）<br/>・焼き鳥：<b>${advice.yakitori}本</b>（補正 ${advice.yakitoriMultiplier}）<br/>・一品：<b>${advice.ippin}皿</b>（補正 ${advice.ippinMultiplier}）`;
+
+    showResult(message);
+}
+
+/* --- 結果表示 --- */
+function showResult(text) {
+    let box = document.getElementById("result-box");
+    box.innerHTML = text;
+    box.style.display = "block";
+}
+
+</script>
+</body>
+</html>
